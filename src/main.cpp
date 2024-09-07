@@ -1,8 +1,39 @@
 #include <Arduino.h>
 #include <esp_camera.h>
-#include <esp_wifi.h>
-#include <TFT_eSPI.h>
+#include <TJpg_Decoder.h>
+#include <Adafruit_ST7789.h>
+#include <SPI.h>
 
+
+#if defined(SEEED_XIAO_ESP32S3)
+
+#define PWDN_GPIO_NUM     -1
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM     10
+#define SIOD_GPIO_NUM     40
+#define SIOC_GPIO_NUM     39
+#define Y9_GPIO_NUM       48
+#define Y8_GPIO_NUM       11
+#define Y7_GPIO_NUM       12
+#define Y6_GPIO_NUM       14
+#define Y5_GPIO_NUM       16
+#define Y4_GPIO_NUM       18
+#define Y3_GPIO_NUM       17
+#define Y2_GPIO_NUM       15
+#define VSYNC_GPIO_NUM    38
+#define HREF_GPIO_NUM     47
+#define PCLK_GPIO_NUM     13
+#define LED_GPIO_NUM      21
+
+#define TFT_CLK  D8
+#define TFT_MISO D9 //nc
+#define TFT_MOSI D10
+#define TFT_CS   -1  // Chip select control pin
+#define TFT_DC   D2  // Data Command control pin
+#define TFT_RST  D1
+
+auto spiTft = SPIClass(FSPI);
+#else
 #define PWDN_GPIO_NUM    32
 #define RESET_GPIO_NUM   -1
 #define XCLK_GPIO_NUM    0
@@ -19,6 +50,18 @@
 #define VSYNC_GPIO_NUM   25
 #define HREF_GPIO_NUM    23
 #define PCLK_GPIO_NUM    22
+
+#define TFT_MOSI 12
+#define TFT_MISO 13
+#define TFT_CLK  14
+#define TFT_CS   -1
+#define TFT_RST  2
+#define TFT_DC   16
+
+auto spiTft = SPIClass(VSPI);
+#endif
+
+auto tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 void setupCamera() {
   Serial.println("Camera setup started.");
@@ -43,10 +86,10 @@ void setupCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_RGB565;
+  config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_240X240;
+  config.jpeg_quality = 10;
   config.fb_count = 2;
-
 
   const esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -56,29 +99,34 @@ void setupCamera() {
   Serial.println("Camera setup completed successfully.");
 }
 
+static bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
+  tft.drawRGBBitmap(x, y, bitmap, w, h);
+  return true;
+}
+
 void setup() {
   Serial.begin(115200);
 
-  // setupCamera();
+  spiTft.begin(TFT_CLK, TFT_MISO, TFT_MOSI, TFT_CS);
+  spiTft.setDataMode(SPI_MODE3);
+  tft.init(240, 240,SPI_MODE3);
+  tft.setSPISpeed(80000000);
+  tft.fillScreen(ST77XX_BLACK);
 
-  // auto spiTft = SPIClass(VSPI);
-  // spiTft.begin(TFT_CLK, TFT_MISO, TFT_MOSI, TFT_CS);
-  // auto tft = Adafruit_ST7789(&spiTft, TFT_CS, TFT_DC, TFT_RST);
+  TJpgDec.setJpgScale(1);
+  TJpgDec.setCallback(tft_output);
 
-  auto tft = TFT_eSPI();
-  // auto tft = Adafruit_ST7789(-1,TFT_DC,TFT_MOSI,TFT_CLK,TFT_RST);
-
-  tft.init();
-  // setCpuFrequencyMhz(80);
-  tft.fillScreen(TFT_RED);
-  tft.setCursor(0, 0);
-  tft.setTextColor(TFT_GREEN);
-  tft.setTextWrap(true);
-  tft.print("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur adipiscing ante sed nibh tincidunt feugiat. Maecenas enim massa, fringilla sed malesuada et, malesuada sit amet turpis. Sed porttitor neque ut ante pretium vitae malesuada nunc bibendum. Nullam aliquet ultrices massa eu hendrerit. Ut sed nisi lorem. In vestibulum purus a tortor imperdiet posuere. ");
-
-
+  setupCamera();
 }
 
 void loop() {
-// write your code here
+  const auto fb = esp_camera_fb_get();
+  if (fb) {
+    TJpgDec.drawJpg(0, 0, fb->buf, fb->len);
+    esp_camera_fb_return(fb);
+  } else {
+    tft.fillScreen(ST77XX_RED);
+    tft.println("Camera error");
+    delay(1000);
+  }
 }
