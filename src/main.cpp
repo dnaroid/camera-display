@@ -106,10 +106,10 @@ static bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* b
 
 void setup() {
   Serial.begin(115200);
-
   spiTft.begin(TFT_CLK, TFT_MISO, TFT_MOSI, TFT_CS);
   spiTft.setDataMode(SPI_MODE3);
   tft.init(240, 240,SPI_MODE3);
+  tft.setRotation(3);
   tft.setSPISpeed(80000000);
   tft.fillScreen(ST77XX_BLACK);
 
@@ -117,6 +117,9 @@ void setup() {
   TJpgDec.setCallback(tft_output);
 
   setupCamera();
+  sensor_t* s = esp_camera_sensor_get();
+  s->set_hmirror(s, 0);
+  s->set_vflip(s, 0);
 }
 
 void loop() {
